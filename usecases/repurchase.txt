@@ -1,0 +1,83 @@
+Step 1: gcloud auth login
+
+Step 2: Create dataset for Staging using below command
+bq mk -d repurchase_stg_ds
+
+Step 3: Create table under above dataset
+bq mk -t repurchase_stg_ds.repurchase_stg_tb cid:STRING,upc:STRING,oid:STRING,dt:STRING,r_dt:STRING,prc:STRING,qty:STRING,amt:STRING,r_qty:STRING,r_amt:STRING,web_prod_id:STRING,GMM_DESC:STRING,PARENT_MDSE_DIVN_DESC:STRING
+
+Step 4: Load table contents from csv to table in dataset
+bq load --source_format=CSV --skip_leading_rows=1 Repurchase_products_staging.products_staging D:\GCP\VaarahiMaterial\Datasets\Repurchase_Product.csv
+
+Step 5: Create dataset for History
+bq mk -d repurchase_hist_ds
+
+Step 6: Create table under History dataset
+bq mk -t repurchase_hist_ds.repurchase_hist_tb CUST_ID:INTEGER,USR_COUNT:INTEGER,ORD_ID:STRING,PURCH_DATE:DATE,REC_DATE:DATE,PRICE_ITEM:FLOAT64,QTY:INTEGER,CUST_AMT:FLOAT64,REC_QTY:INTEGER,REC_AMT:FLOAT64,web_prod_id:INTEGER,GMM_DESC:STRING,PARENT_MDSE_DIVN_DESC:STRING,LOAD_DT:TIMESTAMP,Country_code:STRING,ENTITY_CODE:STRING
+
+Step 7: Load data from Staging table to History table
+
+insert into `repurchase_hist_ds.repurchase_hist_tb`
+SELECT 
+safe_cast(cid as int64) CUST_ID,
+safe_cast(safe_cast(upc as float64) as int64) USR_COUNT,
+safe_cast(safe_cast(oid as float64) as int64) ORD_ID,
+COALESCE(
+	SAFE.PARSE_DATE('%m/%d/%Y', dt),
+    SAFE.PARSE_DATE('%m-%d-%Y', dt)
+) AS PURCH_DATE,
+COALESCE(
+	SAFE.PARSE_DATE('%m/%d/%Y', r_dt),
+	SAFE.PARSE_DATE('%m-%d-%Y', r_dt)
+) AS REC_DATE,	
+safe_cast(prc as float64) PRICE_ITEM,	
+COALESCE(SAFE_CAST(qty AS INT64), 0) AS QTY,
+safe_cast(amt as float64) CUST_AMT,
+COALESCE(safe_cast(r_qty as int64), 0) REC_QTY,
+COALESCE(safe_cast(r_amt as float64), 0) REC_AMT,
+safe_cast(web_prod_id as int64) web_prod_id,
+GMM_DESC,
+PARENT_MDSE_DIVN_DESC,
+current_timestamp() as LOAD_DT,
+'IND' as Country_code,
+'SW' as ENTITY_CODE
+FROM repurchase_stg_ds.repurchase_stg_tb;
+
+bq query --use_legacy_sql=false "INSERT INTO `repurchase_hist_ds.repurchase_hist_tb` SELECT SAFE_CAST(cid AS INT64) AS CUST_ID, SAFE_CAST(SAFE_CAST(upc AS FLOAT64) AS INT64) AS USR_COUNT, SAFE_CAST(SAFE_CAST(oid AS FLOAT64) AS INT64) AS ORD_ID, COALESCE(SAFE.PARSE_DATE('%m/%d/%Y', dt), SAFE.PARSE_DATE('%m-%d-%Y', dt)) AS PURCH_DATE, COALESCE(SAFE.PARSE_DATE('%m/%d/%Y', r_dt), SAFE.PARSE_DATE('%m-%d-%Y', r_dt)) AS REC_DATE, SAFE_CAST(prc AS FLOAT64) AS PRICE_ITEM, COALESCE(SAFE_CAST(qty AS INT64), 0) AS QTY, SAFE_CAST(amt AS FLOAT64) AS CUST_AMT, COALESCE(SAFE_CAST(r_qty AS INT64), 0) AS REC_QTY, COALESCE(SAFE_CAST(r_amt AS FLOAT64), 0) AS REC_AMT, SAFE_CAST(web_prod_id AS INT64) AS web_prod_id, GMM_DESC, PARENT_MDSE_DIVN_DESC, CURRENT_TIMESTAMP() AS LOAD_DT, 'IND' AS Country_code, 'SW' AS ENTITY_CODE FROM repurchase_stg_ds.repurchase_stg_tb;"
+
+Step 8: Create dataset for Views
+bq mk -d repurchase_viwes_ds
+
+Step 9: Create View to see records with GMM_DESC is Beauty
+bq query --use_legacy_sql=false create view repurchase_views_ds.repurchase_view1_tb as select * from repurchase_hist_ds.repurchase_hist_tb where GMM_DESC='BEAUTY'
+
+Step 10: Create View to see records with GMM_DESC is Beauty and PARENT_MDSE_DIVN_DESC is Cosmetics
+bq query --use_legacy_sql=false create view repurchase_views_ds.repurchase_view2_tb as select * from repurchase_hist_ds.repurchase_hist_tb where GMM_DESC='BEAUTY' and PARENT_MDSE_DIVN_DESC='COSMETICS' 
+
+
+Step 11: Create Audit Tables for both Staging and History
+bq query "create table repurchase_stg_ds.audit_repurchase_stg (dataset_name string,table_name string,date_audit date,total_record_count int64,audited_by string)
+"
+bq "create table repurchase_hist_ds.audit_repurchase_hist (dataset_name string,table_name string,date_audit date,total_record_count int64,audited_by string)
+" 
+
+
+Step 11: Insert data into Audit tables
+bq query --use_legacy_sql=false insert into `repurchase_stg_ds.audit_repurchase_stg` select 'repurchase_stg_ds' as dataset_name,'repurchase_stg_tb' as table_name,current_date() as date_audit,count(*) as total_record_count,"Vinod" as audited_by from `repurchase_stg_ds.repurchase_stg_tb`
+
+bq query --use_legacy_sql=false insert into `repurchase_hist_ds.audit_repurchase_hist` select 'repurchase_stg_ds' as dataset_name,'repurchase_stg_tb' as table_name,current_date() as date_audit,count(*) as total_record_count,"Vinod" as audited_by from `repurchase_hist_ds.repurchase_hist_tb`
+
+
+
+
+
+-----------------------
+Snapshot:
+---------
+CREATE SNAPSHOT TABLE repurchase_hist_ds.snapshot_table_name CLONE repurchase_hist_ds.repurchase_hist_tb OPTIONS(expiration_timestamp = TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR));
+
+
+Time Travel:
+------------
+SELECT * FROM `repurchase_hist_ds.repurchase_hist_tb` FOR SYSTEM TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 HOUR);
+
