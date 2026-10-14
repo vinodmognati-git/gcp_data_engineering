@@ -1,0 +1,33 @@
+Check existing buckets in Cloud
+>>	gcloud storage ls
+
+Create a bucket for sales 
+>>  gcloud storage buckets create gs://vinod_sales_bucket
+
+Copy .csv files from a folder to bucket
+>>  gcloud storage cp --recursive C:\Users\param\OneDrive\Desktop\vinod\GCP\bigquery\test_data_for_bq\sales_new_usecase gs://vinod_sales_bucket/
+
+Create datasets for stg, hist and views
+>>  bq mk -d sales_usecase_stg_ds
+>>  bq mk -d sales_usecase_hist_ds
+>>  bq mk -d sales_usecase_views_ds
+
+Create tables in the dataset
+>>  bq mk -t  sales_usecase_stg_ds.sales_customers_stg_tb
+>>  bq mk -t  sales_usecase_stg_ds.sales_products_stg_tb
+>>  bq mk -t  sales_usecase_stg_ds.sales_stores_stg_tb
+>>  bq mk -t  sales_usecase_stg_ds.sales_transactions_stg_tb
+
+Load from bucket to stage/raw dataset  tables
+
+>>  bq load --source_format=CSV --skip_leading_rows=1 sales_usecase_stg_ds.sales_customers_stg_tb gs://vinod_sales_bucket/customers.csv customer_id:string,customer_name:string,email:string,phone:string,address:string,join_date:string
+
+>>  bq load --source_format=CSV --skip_leading_rows=1 sales_usecase_stg_ds.sales_products_stg_tb gs://vinod_sales_bucket/products.csv product_id:string,product_name:string,category:string,price:string
+
+>>  bq load --source_format=CSV --skip_leading_rows=1 sales_usecase_stg_ds.sales_stores_stg_tb gs://vinod_sales_bucket/products.csv store_id:string,store_name:string,location:string,store_type:string
+
+>>  bq load --source_format=CSV --skip_leading_rows=1 sales_usecase_stg_ds.sales_transactions_stg_tb gs://vinod_sales_bucket/sales_transactions.csv transaction_id:string,product_id:string,store_id:string,customer_id:string,quantity:string,sale_date:string,sale_amount:string
+
+
+
+
